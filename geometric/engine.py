@@ -407,6 +407,9 @@ class ExaChem(Engine):
         # Make sure to compute the gradient
         self.exachem_temp["TASK"]["operation"] = ["gradient"]
 
+        # Check if geometry was given in angstrom
+        self.scale = self.exachem_temp["geometry"].get("units", "bohr") == "angstrom"
+
     def set_exachemexe(self, exachemexe):
         self.exe = exachemexe
 
@@ -416,7 +419,7 @@ class ExaChem(Engine):
         if not os.path.exists(dirname): os.makedirs(dirname)
 
         # Get new coordinates 
-        self.M.xyzs[0] = coords.reshape(-1, 3) * bohr2ang
+        self.M.xyzs[0] = coords.reshape(-1, 3) * bohr2ang if self.scale else coords.reshape(-1, 3)
 
         # Update coordinates in JSON dictionary
         exachem_temp = deepcopy(self.exachem_temp)
