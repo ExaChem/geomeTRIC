@@ -188,6 +188,27 @@ def load_tcin(f_tcin, reqxyz=True):
 #| to calculate energy and gradient |#
 #====================================#
 
+def coords_to_xyz(M, coord, dirname):
+    """
+    Write a nx3 numpy array to an XYZ file.
+
+    Parameters:
+    - filename: str, path to the output .xyz file
+    - array: nx3 numpy array, data to be written to the file
+    """
+    # Ensure the input array has the correct shape (n, 3)
+    coords = coord.reshape(coord.size // 3, 3)
+
+    # Open the file for writing
+    with open(os.path.join(dirname, "input.xyz"), 'w') as f:
+        # Write the number of atoms (rows in the array)
+        f.write(f"{coords.shape[0]}\n")
+        f.write("\n") 
+
+        # Write each row of the array as an XYZ point
+        for i, row in enumerate(coords):
+            f.write(f"{M.elem[i]} {row[0]} {row[1]} {row[2]}\n")
+
 class Engine(object):
     def __init__(self, molecule):
         if len(molecule) != 1:
@@ -368,6 +389,91 @@ class Blank(Engine):
         energy = 0.0
         gradient = np.zeros(len(coords), dtype=float)
         return {'energy':energy, 'gradient':gradient}
+
+class ExaChem(Engine):
+    """
+    Run an ExaChem energy and gradient calculation
+    """
+    def __init__(self, molecule, dirname=None, pdb=None):
+        super(ExaChem, self).__init__(molecule)
+
+    def calc_new(self, coords, dirname):
+
+        # ensuring dirname exists
+        if not os.path.exists(dirname): os.makedirs(dirname)
+
+        # generating xyz file
+        coords_to_xyz(self.M, coords, dirname)
+        
+        # generating exachem input file
+        subprocess.check_call(f'python3 {os.environ['xyz_to_exachem']} input.xyz bohr scf gradient', cwd=dirname, shell=True)
+
+        # running exachem
+        subprocess.check_call(f'mpirun -n 2 {os.environ['ExaChem']} input.json > run.out', cwd=dirname, shell=True)
+
+        # Extracting energy and gradients
+        result = self.read_result(dirname)
+
+        return result # returns dictionary with energy and gradients
+
+    def calc_bondorder(self, coords, dirname):
+        # temp function
+        return 0
+
+    def calc_wq_new(self, coords, dirname):
+        # temp function
+        return 0
+    
+    def number_output(self, dirname, calcNum):
+        # temp function
+        return 0
+    
+    def read_result(self, dirname, check_coord=None):
+
+        try:
+            # read the exachem result file from dirname and extract energy and gradient
+            energy, gradient = None, None
+            with open(os.path.join(dirname, "run.out"), 'r') as file:
+
+                # Reading energy
+                for line in file:
+                    line = line.strip()
+                    line = line.split()
+                    try:
+                        if line[0] == "SCF" and line[1] == "Reference" and line[2] ==  "Energy:":
+                            energy = float(line[3])
+                            print(f"Energy: {energy}")
+                    except IndexError:
+                        continue
+
+            with open(os.path.join(dirname, "run.out"), 'r') as file:
+
+                # Reading gradients
+                read_gradients = False
+                gradient = np.zeros((0, 3))
+                for i, line in enumerate(file):
+                    line = line.strip()
+                    line = line.split()
+                    try:
+                        if line[0] == "SCF" and line[1] == "ENERGY" and line[2] == "GRADIENTS":
+                            read_gradients = True
+                            continue
+                    except:
+                        continue
+                    if read_gradients and len(line) == 8:
+                        gradient = np.concatenate(
+                                                (gradient, 
+                                                np.array(
+                                                [float(line[5]),
+                                                float(line[6]),
+                                                float(line[7])]).reshape(1, 3)))
+
+            
+            gradient = gradient.reshape(gradient.size)
+
+            return {'energy':energy, 'gradient':gradient}
+        except:
+            raise EngineError
 
 class TeraChem(Engine):
     """

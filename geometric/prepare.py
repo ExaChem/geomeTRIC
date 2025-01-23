@@ -44,7 +44,7 @@ import os
 from .ase_engine import EngineASE
 from .errors import EngineError, InputError
 from .internal import Distance, Angle, Dihedral, CartesianX, CartesianY, CartesianZ, TranslationX, TranslationY, TranslationZ, RotationA, RotationB, RotationC, CentroidDistance
-from .engine import set_tcenv, load_tcin, TeraChem, ConicalIntersection, Psi4, QChem, Gromacs, Molpro, OpenMM, QCEngineAPI, Gaussian, QUICK, CFOUR
+from .engine import set_tcenv, load_tcin, TeraChem, ConicalIntersection, Psi4, QChem, Gromacs, Molpro, OpenMM, QCEngineAPI, Gaussian, QUICK, CFOUR, ExaChem
 from .molecule import Molecule, Elements
 from .nifty import logger, isint, uncommadash, bohr2ang, ang2bohr
 from .rotate import calc_fac_dfac
@@ -88,7 +88,7 @@ def get_molecule_engine(**kwargs):
     ## MECI calculations create a custom engine that contains multiple engines.
     if kwargs.get('meci', None):
         if engine_str is not None:
-            if engine_str.lower() in ['psi4', 'gmx', 'molpro', 'qcengine', 'openmm', 'gaussian','quick', 'cfour']:
+            if engine_str.lower() in ['psi4', 'gmx', 'molpro', 'qcengine', 'openmm', 'gaussian','quick', 'cfour', 'exachem']:
                 logger.warning("MECI optimizations are not tested with engines: psi4, gmx, molpro, qcengine, openmm, gaussian, quick, cfour. Be Careful!")
         elif customengine:
             logger.warning("MECI optimizations are not tested with customengine. Be Careful!")
@@ -134,7 +134,7 @@ def get_molecule_engine(**kwargs):
         engine_str = engine_str.lower()
         if engine_str[:4] == 'tera':
             engine_str = 'tera'
-        implemented_engines = ('tera', 'qchem', 'psi4', 'gmx', 'molpro', 'openmm', 'qcengine', "gaussian", "ase", "quick", "cfour")
+        implemented_engines = ('tera', 'qchem', 'psi4', 'gmx', 'molpro', 'openmm', 'qcengine', "gaussian", "ase", "quick", "cfour", "exachem")
         if engine_str not in implemented_engines:
             raise RuntimeError("Valid values of engine are: " + ", ".join(implemented_engines))
         if customengine:
@@ -360,6 +360,14 @@ def get_molecule_engine(**kwargs):
                 ase_class_name,
                 **json.loads(ase_kwargs),
             )
+        elif engine_str == 'exachem':
+            logger.info("ExaChem engine selected. \n")
+            # Need to modify Molecule to take exachem inputs
+            M = Molecule(kwargs.get("input"), radii=radii, fragment=frag)
+            engine = ExaChem(
+                M,
+                dirname=dirname
+            )            
         else:
             raise RuntimeError("Failed to create an engine object, this might be a bug in get_molecule_engine")
     elif customengine:
