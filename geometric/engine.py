@@ -42,6 +42,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import re
 import os
+import json
 
 from .molecule import Molecule, format_xyz_coord
 from .nifty import bak, au2ev, eqcgmx, fqcgmx, bohr2ang, logger, getWorkQueue, queue_up_src_dest, rootdir, copy_tree_over
@@ -394,22 +395,40 @@ class ExaChem(Engine):
     """
     Run an ExaChem energy and gradient calculation
     """
-    def __init__(self, molecule, dirname=None, pdb=None):
+    def __init__(self, molecule, dirname=None, pdb=None, np=None):
         super(ExaChem, self).__init__(molecule)
+        self.np = 2 if np is None else np
+        self.exe = os.environ.get("ExaChem")
+
+    def load_exachem_input(self, exachem_input):
+        with open(exachem_input) as exachem_in:
+            self.exachem_temp = json.load(exachem_in)
+
+        # Make sure to compute the gradient
+        self.exachem_temp["TASK"]["operation"] = ["gradient"]
+
+    def set_exachemexe(self, exachemexe):
+        self.exe = exachemexe
 
     def calc_new(self, coords, dirname):
 
         # ensuring dirname exists
         if not os.path.exists(dirname): os.makedirs(dirname)
 
-        # generating xyz file
-        coords_to_xyz(self.M, coords, dirname)
-        
-        # generating exachem input file
-        subprocess.check_call(f'python3 {os.environ['xyz_to_exachem']} input.xyz bohr scf gradient', cwd=dirname, shell=True)
+        # Get new coordinates 
+        self.M.xyzs[0] = coords.reshape(-1, 3) * bohr2ang
 
+        # Update coordinates in JSON dictionary
+        exachem_temp = deepcopy(self.exachem_temp)
+        exachem_temp["geometry"]["coordinates"] = [f"{e}  {c[0]:12.8f}  {c[1]:12.8f}  {c[2]:12.8f}" for e,c in zip(self.M.elem, self.M.xyzs[0])]
+
+        # generating exachem input file
+        inputfile = os.path.join(dirname, "input.json")
+        with open(inputfile, "w") as exachem_in:
+            json.dump(exachem_temp, exachem_in, indent=2)
+        
         # running exachem
-        subprocess.check_call(f'mpirun -n 2 {os.environ['ExaChem']} input.json > run.out', cwd=dirname, shell=True)
+        subprocess.check_call(f"mpirun -n {self.np} {self.exe} input.json > run.out", cwd=dirname, shell=True)
 
         # Extracting energy and gradients
         result = self.read_result(dirname)
@@ -430,6 +449,11 @@ class ExaChem(Engine):
     
     def read_result(self, dirname, check_coord=None):
 
+        for task in ["scf", "mp2", "ccsd", "ccsd_t"]:
+            if self.exachem_temp["TASK"].get(task, False):
+                string = task.upper()
+        if string == "CCSD_T": string = "CCSD(T)"
+
         try:
             # read the exachem result file from dirname and extract energy and gradient
             energy, gradient = None, None
@@ -440,7 +464,7 @@ class ExaChem(Engine):
                     line = line.strip()
                     line = line.split()
                     try:
-                        if line[0] == "SCF" and line[1] == "Reference" and line[2] ==  "Energy:":
+                        if line[0] == string and line[1] == "Reference" and line[2] ==  "Energy:":
                             energy = float(line[3])
                             print(f"Energy: {energy}")
                     except IndexError:
@@ -455,7 +479,7 @@ class ExaChem(Engine):
                     line = line.strip()
                     line = line.split()
                     try:
-                        if line[0] == "SCF" and line[1] == "ENERGY" and line[2] == "GRADIENTS":
+                        if line[0] == string and line[1] == "ENERGY" and line[2] == "GRADIENTS":
                             read_gradients = True
                             continue
                     except:

@@ -401,7 +401,7 @@ elif "geometric" in __name__:
 #===========================#
 
 ## One bohr equals this many angstroms
-bohr2ang     = 0.529177210903      # Previous value: 0.529177210
+bohr2ang     = 0.529177210544 ## 903      # Previous value: 0.529177210
 
 def unmangle(M1, M2):
     """
@@ -1186,7 +1186,8 @@ class Molecule(object):
                          'qcesp'    : self.read_qcesp,
                          'qdata'    : self.read_qdata,
                          'quick'    : self.read_quick,
-                         'tinker'   : self.read_arc}
+                         'tinker'   : self.read_arc,
+                         'exachem'  : self.read_exachem}
         ## The table of file writers
         self.Write_Tab = {'gromacs' : self.write_gro,
                           'xyz'     : self.write_xyz,
@@ -1216,7 +1217,8 @@ class Molecule(object):
                           'txt'     : 'qdata',
                           'crd'     : 'charmm',
                           'cor'     : 'charmm',
-                          'arc'     : 'tinker'}
+                          'arc'     : 'tinker',
+                          'json'    : 'exachem'}
         ## Creates entries like 'gromacs' : 'gromacs' and 'xyz' : 'xyz'
         ## in the Funnel
         self.positive_resid = kwargs.get('positive_resid', 0)
@@ -3308,6 +3310,42 @@ class Molecule(object):
         dcd = None
         Answer = {'xyzs' : xyzs,
                   'boxes' : boxes}
+        return Answer
+
+    def read_exachem(self, fnm, **kwargs):
+        """ Parse an ExaChem .json input file and return a SINGLE-ELEMENT list of xyz coordinates
+
+        @param[in] fnm The input file name
+        @return elem   A list of chemical elements
+        @return comms  A single-element list for the comment
+        @return xyzs   A single-element list for the XYZ coordinates
+        @return charge The total charge of the system
+        @return mult   The spin multiplicity of the system
+
+        """
+        elem  = []
+        xyz   = []
+        with open(fnm) as handle:
+            jsonfile = json.load(handle)
+        coords = jsonfile['geometry']['coordinates']
+        units  = jsonfile['geometry'].get('units', 'bohr').lower()
+        scfdict = jsonfile.get("SCF", {"multiplicity": 1, "charge": 0})
+        charge = scfdict.get("charge", 0)
+        mult   = scfdict.get("multiplicity", 1)
+        commondict = jsonfile.get("common", {"comments": {"comment1": ""}})
+        comments = commondict.get("comments", {"comment1": ""})
+        for line in coords:
+            sline = line.split()
+            element = "".join(filter(lambda x: x.isalpha(), sline[0]))
+            if element.capitalize() in PeriodicTable and isfloat(sline[1]) and isfloat(sline[2]) and isfloat(sline[3]):
+                elem.append(element)
+                xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
+        if units == 'bohr': xyz *= bohr2ang
+        Answer = {'xyzs'   : [np.array(xyz)],
+                  'elem'   : elem,
+                  'comms'  : [val.strip() for key,val in comments.items()],
+                  'charge' : charge,
+                  'mult'   : mult}
         return Answer
 
     def read_com(self, fnm, **kwargs):

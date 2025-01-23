@@ -69,6 +69,8 @@ def get_molecule_engine(**kwargs):
     customengine = kwargs.get('customengine', None)
     # Path to Molpro executable (used if molpro=True)
     molproexe = kwargs.get('molproexe', None)
+    # Path to ExaChem
+    exachemexe = kwargs.get('exachemexe', None)
     # PDB file will be read for residue IDs to make TRICs for fragments
     # and provide starting coordinates in the case of OpenMM
     pdb = kwargs.get('pdb', None)
@@ -363,11 +365,12 @@ def get_molecule_engine(**kwargs):
         elif engine_str == 'exachem':
             logger.info("ExaChem engine selected. \n")
             # Need to modify Molecule to take exachem inputs
-            M = Molecule(kwargs.get("input"), radii=radii, fragment=frag)
-            engine = ExaChem(
-                M,
-                dirname=dirname
-            )            
+            M = Molecule(inputf, radii=radii, fragment=frag)
+            engine = ExaChem(M, dirname=dirname, np=threads)
+            engine.load_exachem_input(inputf)
+            if exachemexe is not None:
+                engine.set_exachemexe(exachemexe)
+            threads_enabled = True
         else:
             raise RuntimeError("Failed to create an engine object, this might be a bug in get_molecule_engine")
     elif customengine:
