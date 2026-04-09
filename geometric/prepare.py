@@ -302,6 +302,12 @@ def get_molecule_engine(**kwargs):
             logger.info("The gaussian engine exe is set as %s\n" % engine.gaussian_exe)
             # load the template into the engine
             engine.load_gaussian_input(inputf)
+        elif engine_str == 'bagel':
+            logger.info("Bagel engine selected. Expecting Bagel input for gradient calculation.\n")
+            engine = Bagel(exe=bagelexe, threads=threads)
+            engine.load_bagel_input(inputf)
+            M = engine.M
+            threads_enabled = True
         elif engine_str == 'cfour':
             logger.info("CFOUR engine selected. Expecting CFOUR input for gradient calculation.\n")
             engine = CFOUR(inputf)

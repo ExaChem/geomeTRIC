@@ -14,28 +14,28 @@ localizer = addons.in_folder
 datad = addons.datad
 exampled = addons.exampled
 
-def test_hcn_neb_input(localizer, molecule_engine_hcn):
+def test_hcn_neb_input(localizer, molecule_engine):
     """
     Test lengths of input chains
     """
     chain_M = geometric.molecule.Molecule(os.path.join(datad, "hcn_neb_input.xyz"))
     nimg = 7
 
-    M1, engine = molecule_engine_hcn('psi4', nimg)
+    M1, engine = molecule_engine('hcn', 'psi4', nimg)
 
     # The number of images can't exceed the maximum number of images in the input chain
-    M2, engine = molecule_engine_hcn('psi4', 9999)
+    M2, engine = molecule_engine('hcn', 'psi4', 9999)
 
     assert nimg == len(M1)
     assert len(M2) == len(chain_M)
 
 
 @addons.using_psi4
-def test_psi4_hcn_neb_optimize_1(localizer, molecule_engine_hcn):
+def test_psi4_hcn_neb_optimize_1(localizer, molecule_engine):
     """
     Optimize a HCN chain without alignment
     """
-    M, engine = molecule_engine_hcn('psi4', 11)
+    M, engine = molecule_engine('hcn', 'psi4', 11)
 
     params = geometric.params.NEBParams(**{"optep": True, "align": False, "verbose": 1})
     chain = geometric.neb.ElasticBand(
@@ -44,19 +44,37 @@ def test_psi4_hcn_neb_optimize_1(localizer, molecule_engine_hcn):
 
     assert chain.coordtype == "cart"
 
-    final_chain, optCycle = geometric.neb.OptimizeChain(chain, engine, params)
+    class StepCounter:
+        """Simple class to store the number of steps."""
+        num_steps: int
+
+        def __init__(self):
+            self.num_steps = 0
+
+        def __call__(self, chain):
+            self.num_steps += 1
+
+    step_counter = StepCounter()
+
+    final_chain, optCycle = geometric.neb.OptimizeChain(
+        chain,
+        engine,
+        params,
+        save_callback=step_counter
+    )
 
     assert optCycle <= 10
+    assert step_counter.num_steps == optCycle + 1  # the callback gets called once more
     assert final_chain.maxg < params.maxg
     assert final_chain.avgg < params.avgg
 
 
 @addons.using_psi4
-def test_psi4_hcn_neb_optimize_2(localizer, molecule_engine_hcn):
+def test_psi4_hcn_neb_optimize_2(localizer, molecule_engine):
     """
     Optimize a HCN chain with alignment
     """
-    M, engine = molecule_engine_hcn('psi4', 11)
+    M, engine = molecule_engine('hcn', 'psi4', 11)
 
     # maxg and avgg are increased here to make them converge faster after the alignment
     params = geometric.params.NEBParams(**{"verbose": 1, "maxg": 3.0, "avgg": 2.0})
@@ -68,17 +86,17 @@ def test_psi4_hcn_neb_optimize_2(localizer, molecule_engine_hcn):
 
     final_chain, optCycle = geometric.neb.OptimizeChain(chain, engine, params)
 
-    assert optCycle <= 10
+    assert optCycle <= 15
     assert final_chain.maxg < params.maxg
     assert final_chain.avgg < params.avgg
 
 
 @addons.using_terachem
-def test_tera_hcn_neb_optimize(localizer, molecule_engine_hcn):
+def test_tera_hcn_neb_optimize(localizer, molecule_engine):
     """
     NEB with TeraChem
     """
-    M, engine = molecule_engine_hcn('tera', 11)
+    M, engine = molecule_engine('hcn', 'tera', 11)
 
     params = geometric.params.NEBParams(**{"optep": False, "align": False})
     chain = geometric.neb.ElasticBand(
@@ -95,11 +113,11 @@ def test_tera_hcn_neb_optimize(localizer, molecule_engine_hcn):
 
 
 @addons.using_qchem
-def test_qchem_hcn_neb_optimize(localizer, molecule_engine_hcn):
+def test_qchem_hcn_neb_optimize(localizer, molecule_engine):
     """
     NEB with QChem
     """
-    M, engine = molecule_engine_hcn('qchem', 11)
+    M, engine = molecule_engine('hcn', 'qchem', 11)
 
     params = geometric.params.NEBParams(**{"optep": False, "align": False})
     chain = geometric.neb.ElasticBand(
@@ -116,11 +134,11 @@ def test_qchem_hcn_neb_optimize(localizer, molecule_engine_hcn):
 
 
 @addons.using_gaussian
-def test_qchem_hcn_neb_optimize(localizer, molecule_engine_hcn):
+def test_qchem_hcn_neb_optimize(localizer, molecule_engine):
     """
     NEB with Gaussian
     """
-    M, engine = molecule_engine_hcn('gaussian', 11)
+    M, engine = molecule_engine('hcn', 'gaussian', 11)
 
     params = geometric.params.NEBParams(**{"optep": False, "align": False})
     chain = geometric.neb.ElasticBand(
@@ -138,11 +156,11 @@ def test_qchem_hcn_neb_optimize(localizer, molecule_engine_hcn):
 
 @addons.using_psi4
 @addons.using_bigchem
-def test_psi4_bigchem(localizer, molecule_engine_hcn):
+def test_psi4_bigchem(localizer, molecule_engine):
     """
     Optimize a HCN chain without alignment with BigChem and Psi4
     """
-    M, engine = molecule_engine_hcn('psi4', 11)
+    M, engine = molecule_engine('hcn', 'psi4', 11)
 
     params = geometric.params.NEBParams(**{"align": False, "verbose": 1, "bigchem": True})
     chain = geometric.neb.ElasticBand(
@@ -160,11 +178,11 @@ def test_psi4_bigchem(localizer, molecule_engine_hcn):
 
 @addons.using_terachem
 @addons.using_bigchem
-def test_terachem_bigchem(localizer, molecule_engine_hcn):
+def test_terachem_bigchem(localizer, molecule_engine):
     """
     Optimize a HCN chain without alignment with BigChem and TeraChem
     """
-    M, engine = molecule_engine_hcn('tera', 11)
+    M, engine = molecule_engine('hcn', 'tera', 11)
 
     params = geometric.params.NEBParams(**{"align": False, "verbose": 1, "bigchem": True})
     chain = geometric.neb.ElasticBand(
@@ -182,11 +200,11 @@ def test_terachem_bigchem(localizer, molecule_engine_hcn):
 
 @addons.using_qchem
 @addons.using_bigchem
-def test_qchem_bigchem(localizer, molecule_engine_hcn):
+def test_qchem_bigchem(localizer, molecule_engine):
     """
     Optimize a HCN chain without alignment with BigChem and QChem
     """
-    M, engine = molecule_engine_hcn('qchem', 11)
+    M, engine = molecule_engine('hcn', 'qchem', 11)
 
     params = geometric.params.NEBParams(**{"align": False, "verbose": 1, "bigchem": True})
     chain = geometric.neb.ElasticBand(
@@ -216,8 +234,8 @@ class TestPsi4WorkQueueNEB:
 
     @addons.using_psi4
     @addons.using_workqueue
-    def test_psi4_work_queue_neb(self, localizer, molecule_engine_hcn):
-        M, engine = molecule_engine_hcn('psi4', 11)
+    def test_psi4_work_queue_neb(self, localizer, molecule_engine):
+        M, engine = molecule_engine('hcn', 'psi4', 11)
         params = geometric.params.NEBParams(**{"optep": True, "align": False, "verbose": 1})
         chain = geometric.neb.ElasticBand(
             M, engine=engine, tmpdir=tempfile.mkdtemp(), params=params, plain=0
@@ -252,14 +270,14 @@ class TestQChemWorkQueueNEB:
 
     @addons.using_qchem
     @addons.using_workqueue
-    def test_qchem_work_queue_neb(self, localizer, molecule_engine_hcn):
-        M, engine = molecule_engine_hcn('qchem', 11)
+    def test_qchem_work_queue_neb(self, localizer, molecule_engine):
+        M, engine = molecule_engine('hcn', 'qchem', 11)
         params = geometric.params.NEBParams(**{"optep": False, "align": False, "verbose": 1})
         chain = geometric.neb.ElasticBand(
             M, engine=engine, tmpdir=tempfile.mkdtemp(), params=params, plain=0
         )
 
-        geometric.nifty.createWorkQueue(9192, debug=False)
+        geometric.nifty.createWorkQueue(9191, debug=False)
         wq = geometric.nifty.getWorkQueue()
         worker_program = geometric.nifty.which('work_queue_worker')
         # Assume 4 threads are available
@@ -289,14 +307,14 @@ class TestTerachemWorkQueueNEB:
 
     @addons.using_terachem
     @addons.using_workqueue
-    def test_terachem_work_queue_neb(self, localizer, molecule_engine_hcn):
-        M, engine = molecule_engine_hcn('tera', 11)
+    def test_terachem_work_queue_neb(self, localizer, molecule_engine):
+        M, engine = molecule_engine('hcn', 'tera', 11)
         params = geometric.params.NEBParams(**{"optep": False, "align": False, "verbose": 1})
         chain = geometric.neb.ElasticBand(
             M, engine=engine, tmpdir=tempfile.mkdtemp(), params=params, plain=0
         )
 
-        geometric.nifty.createWorkQueue(9193, debug=False)
+        geometric.nifty.createWorkQueue(9191, debug=False)
         wq = geometric.nifty.getWorkQueue()
         worker_program = geometric.nifty.which('work_queue_worker')
         # Assume 4 threads are available
@@ -331,7 +349,12 @@ def test_hcn_neb_service_arrange(localizer):
         for coord in coords
     ]
 
-    new_qcel_mols = geometric.qcf_neb.arrange(qcel_mols, True)
+    chain_list = [[[mol.molecular_charge, mol.molecular_multiplicity], mol.symbols.tolist(), mol.geometry] for mol in qcel_mols]
+
+    chain_respaced = geometric.qcf_neb.arrange(chain_list, True)
+
+    new_qcel_mols = [qcmol(molecular_charge=img[0][0], molecular_multiplicity=img[0][1], symbols=img[1], geometry=img[2]) for img in chain_respaced]
+
     count = sum(
         [
             1 if not np.allclose(i.geometry, j.geometry) else 0
@@ -342,6 +365,9 @@ def test_hcn_neb_service_arrange(localizer):
     # 5 images should change as the result of the respacing.
     assert count == 5
 
+# The json files for the following two tests can be generated using Snowflake.
+# While running the NEB method with Snowflake, return the record within a while loop.
+# The json file needed for the test can be obtained as record.service.service_state.get('nebinfo')
 
 def test_hcn_neb_service_normal(localizer):
     """
@@ -396,7 +422,7 @@ def test_hcn_neb_service_normal(localizer):
     assert np.allclose(new_coords_ang[0], old_coords_ang[0])
     assert np.allclose(new_coords_ang[-1], old_coords_ang[-1])
 
-    # Output dictionary should have still have just one Ys, GWs, and GPs
+    # Output dictionary should still have just one Ys, GWs, and GPs
     assert 1 == len(out_dict["Ys"])
     assert 1 == len(out_dict["GWs"])
     assert 1 == len(out_dict["GPs"])

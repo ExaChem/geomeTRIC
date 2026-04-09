@@ -36,6 +36,7 @@ from __future__ import print_function
 from __future__ import division
 
 import os, sys, time
+from typing import Callable, Optional
 from collections import OrderedDict
 import numpy as np
 from copy import deepcopy
@@ -1137,11 +1138,8 @@ class ElasticBand(Chain):
             ndrminus = np.linalg.norm(cc_curr - cc_prev)
             # Plain elastic band force
             k_new = self.k
-            force_s = k_new * (cc_prev + cc_next - 2 * cc_curr)
-            force_s_para = np.dot(force_s, tau) * tau
-            force_s_ortho = force_s - force_s_para
-            factor = 256 * (1.0 - straight[n]) ** 4
             # Force from the spring in the tangent direction
+            force_s = k_new * (cc_prev + cc_next - 2 * cc_curr) # Full spring force
             force_s_p = k_new * (ndrplus - ndrminus) * tau
             # Now get the perpendicular component of the force from the potential
             force_v_p = force_v - np.dot(force_v, tau) * tau
@@ -1159,7 +1157,7 @@ class ElasticBand(Chain):
             grad_v = -1.0 * force_v
             grad_v_p = -1.0 * force_v_p
             grad_v_p_c[n] = grad_v_p
-            force_s_p_c[n] = force_s
+            force_s_p_c[n] = force_s_p
             force_s_c[n] = force_s
 
         grad_s_i = self.GlobalIC.calcGrad(xyz, -force_s_c.flatten())
@@ -1323,7 +1321,7 @@ class Froot(object):
             return cnorm - self.target
 
 
-def recover(chain_hist, forceCart, result=None):
+def recover(chain_hist, result=None):
     """
     Recover from a failed optimization.
 
@@ -1332,9 +1330,6 @@ def recover(chain_hist, forceCart, result=None):
     chain_hist : list
         List of previous Chain objects;
         the last element is the current chain
-    forceCart : bool
-        Whether to use Cartesian coordinates or
-        adopt the IC system of the current chain
     result : dict
         Dictionary with energies and gradients
 
@@ -1380,7 +1375,6 @@ def BFGSUpdate(Y, old_Y, G, old_G, H, params):
     ndg = np.array(Dg).flatten() / np.linalg.norm(np.array(Dg))
     nhdy = np.dot(H, Dy).flatten() / np.linalg.norm(np.dot(H, Dy))
     if verbose:
-        # HP: 2023-2-15: Not sure what is nhdy is for. I changed np.array(H*dy) to np.dot(H, dy)
         logger.info("Denoms: %.3e %.3e \n" % ((Dg.T * Dy)[0, 0], (Dy.T * H * Dy)[0, 0]))
         logger.info("Dots: %.3e %.3e \n" % (np.dot(ndg, ndy), np.dot(ndy, nhdy)))
     H += Mat1 - Mat2
@@ -1399,7 +1393,6 @@ def updatehessian(old_chain, chain, HP, HW, Y, old_Y, GW, old_GW, GP, old_GP, La
     """
     This function updates the Hessians and check their eigenvalues.
     """
-    H_reset = False
     HP_bak = HP.copy()
     HW_bak = HW.copy()
     BFGSUpdate(Y, old_Y, GP, old_GP, HP, params)
@@ -1413,16 +1406,15 @@ def updatehessian(old_chain, chain, HP, HW, Y, old_Y, GW, old_GW, GP, old_GP, La
             HP = HP_bak.copy()
             HW = HW_bak.copy()
         else:
-            H_reset = True
             logger.info(
                 "Eigenvalues below %.4e (%.4e) - will reset the Hessian \n"
                 % (params.epsilon, np.min(Eig1))
             )
-            chain, Y, GW, GP, HW, HP = recover([old_chain], LastForce, result)
+            chain, Y, GW, GP, HW, HP = recover([old_chain], result)
 
     del HP_bak
     del HW_bak
-    return chain, Y, GW, GP, HP, HW, old_Y, old_GP, old_GW, H_reset
+    return chain, Y, GW, GP, HP, HW, old_Y, old_GP, old_GW
 
 
 def qualitycheck(old_chain, new_chain, trust, Quality, ThreLQ, ThreRJ, ThreHQ, Y, GW, GP, old_Y, old_GW, old_GP, params_tmax):
@@ -1572,7 +1564,7 @@ def takestep(c_hist, chain, optCycle, LastForce, ForceRebuild, trust, Y, GW, GP,
             logger.info("\x1b[93mContinuing in Cartesian coordinates\x1b[0m \n")
         else:
             raise NEBStructureError("Coordinate system has failed too many times")
-        chain, Y, GW, GP, HW, HP = recover(c_hist, LastForce == 2, result)
+        chain, Y, GW, GP, HW, HP = recover(c_hist, result)
         logger.info("\x1b[1;93mSkipping optimization step\x1b[0m \n")
         optCycle -= 1
     else:
@@ -1590,9 +1582,9 @@ def takestep(c_hist, chain, optCycle, LastForce, ForceRebuild, trust, Y, GW, GP,
     return (chain, new_chain, expect, expectG, ForceRebuild, LastForce, old_Y, old_GW, old_GP, respaced, optCycle)
 
 
-def OptimizeChain(chain, engine, params):
+def OptimizeChain(chain, engine, params, save_callback: Optional[Callable[[Chain], None]] = None):
     """
-    Main optimization function.
+    Main optimization function. Optionally takes `save_callback` to periodically save the `Chain` object.
     """
     # Thresholds for low and high quality steps
     ThreLQ = 0.0
@@ -1636,7 +1628,12 @@ def OptimizeChain(chain, engine, params):
             "% 8.4f  " % sum(chain.calc_spacings()),
         )
     )
+
+    # save status
     chain.SaveToDisk(fout="chain_%04i.xyz" % 0)
+    if save_callback is not None:
+        save_callback(chain)
+
     Y = chain.get_internal_all()
     GW = chain.get_global_grad("total", "working")
     GP = chain.get_global_grad("total", "plain")
@@ -1686,8 +1683,13 @@ def OptimizeChain(chain, engine, params):
 
         if respaced:
             chain.SaveToDisk(fout="chain_%04i.xyz" % optCycle)
+            if save_callback is not None:
+                save_callback(chain)
             continue
+
         chain.SaveToDisk(fout="chain_%04i.xyz" % optCycle)
+        if save_callback is not None:
+            save_callback(chain)
 
         # =======================================#
         # |    Check convergence criteria       |#
@@ -1711,7 +1713,7 @@ def OptimizeChain(chain, engine, params):
         # |      Update the Hessian Matrix      |#
         # =======================================#
 
-        chain, Y, GW, GP, HP, HW, Y_prev, GP_prev, GW_prev, _ = updatehessian(chain_prev, chain, HP, HW, Y, Y_prev, GW,
+        chain, Y, GW, GP, HP, HW, Y_prev, GP_prev, GW_prev = updatehessian(chain_prev, chain, HP, HW, Y, Y_prev, GW,
                                                                  GW_prev, GP, GP_prev, LastForce, params, None)
     return chain, optCycle
 

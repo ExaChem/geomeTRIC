@@ -20,8 +20,9 @@ Usage
 -----
 
 The IRC method can be used by passing ``--irc yes`` on the command line with ``geometric-optimize``. The input geometry should be an optimize TS structure.
-geomeTRIC adjusts the IRC step size based on the step quality, and the maximum step size will be set equal to the initial trust radius ``--trust [0.3]``.
-Once the both directions converge, geomeTRIC will write an output xyz file `input_irc.xyz` that shows the IRC pathway.
+geomeTRIC adjusts the IRC step size based on the step quality, and the maximum step size will be set equal to the initial trust radius ``--trust [0.3]``. The direction of IRC can be specified using ``--irc_direction [both]``.
+The ``forward`` direction follows the imaginary mode from the frequency analysis as is, while the ``backward`` direction follows its opposite.
+Once convergence is achieved, geomeTRIC will generate an output xyz file containing the IRC pathway.
 
 Example
 -------
@@ -44,7 +45,7 @@ At the beginning of the first iteration, the mass-weighted step size (:math:`\ma
 
 .. math::
     \begin{aligned}
-    & A = \sqrt{\sum_{i=1}^{N_{\mathrm{atoms}}} (\Delta x_i^2 + \Delta y_i^2 + \Delta z_i^2) \times \sqrt{m_i}} \\
+    & A = \sqrt{\sum_{i=1}^{N_{\mathrm{atoms}}} (\Delta x_i^2 + \Delta y_i^2 + \Delta z_i^2) \times m_i} \\
     & \mathrm{s} = R_{\mathrm{trust}} \times A
     \end{aligned}
 
@@ -55,7 +56,7 @@ Each IRC step starts with taking a half-step towards a pivot point following the
 The pivot point (:math:`\mathbf{\mathrm{q}}^*`) is obtained by:
 
 .. math::
-    \mathbf{q}^* = \mathbf{q} - \frac{\mathrm{s}}{2} \cdot \frac{\mathbf{G} \cdot \mathbf{g}}{(\mathbf{g}^T \cdot \mathbf{G} \cdot \mathbf{g})^{2}}
+    \mathbf{q}^* = \mathbf{q} - \frac{\mathrm{s}}{2} \cdot \frac{\mathbf{G} \cdot \mathbf{g}}{(\mathbf{g}^T \cdot \mathbf{G} \cdot \mathbf{g})^{1/2}}
 
 where :math:`\mathbf{g}` is the gradients of internal coordinates :math:`\mathbf{q}`.
 To reach the next point on the reaction path, another half-step needs to be taken from the pivot point along a vector that is 1) parallel to the acceleration vector of the next point and 2) has a scalar value equal to half of the mass-weighted step size (:math:`\mathrm{s}/2`).

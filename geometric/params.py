@@ -48,6 +48,8 @@ class OptParams(object):
         self.transition = kwargs.get('transition', False)
         # Intrinsic Reaction Coordinate method. This changes a number of default parameters.
         self.irc = kwargs.get('irc', False)
+        # Intrinsic Reaction Coordinate direction.
+        self.irc_direction = kwargs.get('irc_direction', 'both')
         # CI optimizations sometimes require tiny steps
         self.meci = kwargs.get('meci', False)
         # Handle convergence criteria; this edits the kwargs
@@ -130,6 +132,9 @@ class OptParams(object):
             self.hessian = self.hessian.lower()
         else:
             raise RuntimeError("Hessian command line argument can only be never, first, last, first+last, file+last, each, stop, or file:<path>")
+        # If the initial Hessian is provided in the hess_data list, store it in self.hess_data.
+        if kwargs.get('hess_data', None):
+            self.hess_data = np.array(kwargs.get('hess_data'))
         # Perform a frequency analysis whenever a cartesian Hessian is computed
         self.frequency = kwargs.get('frequency', None)
         if self.frequency is None: self.frequency = True
@@ -331,12 +336,13 @@ def parse_optimizer_args(*args):
                           '"psi4" = Psi4                       "openmm" = OpenMM (pass a force field or XML input file)\n'
                           '"molpro" = Molpro                   "gmx" = Gromacs (pass conf.gro; requires topol.top and shot.mdp\n '
                           '"gaussian" = Gaussian09/16          "ase" = ASE calculator, use --ase-class/--ase-kwargs\n '
-                          '"quick" = QUICK\n')
+                          '"quick" = QUICK                     "bagel" = Bagel\n')
     grp_univ.add_argument('--nt', type=int, help='Specify number of threads for running in parallel\n(for TeraChem this should be number of GPUs)')
 
     grp_jobtype = parser.add_argument_group('jobtype', 'Control the type of optimization job')
     grp_jobtype.add_argument('--transition', type=str2bool, help='Provide "yes" to Search for a first order saddle point / transition state.\n ')
     grp_jobtype.add_argument('--irc', type=str2bool, help='Provide "yes" to perform the IRC method.\n ')
+    grp_jobtype.add_argument('--irc_direction', type=str, help='Provide the IRC direction as either \'forward\', \'backward\' or \'both\' (default). When \'both\' is selected, the forward direction will be run first.\n')
     grp_jobtype.add_argument('--meci', type=str, nargs="+", help='Provide second input file and search for minimum-energy conical\n '
                              'intersection or crossing point between two SCF solutions (TeraChem and Q-Chem supported).\n'
                              'Or, provide "engine" if the engine directly provides the MECI objective function and gradient.\n')
@@ -410,6 +416,7 @@ def parse_optimizer_args(*args):
     grp_software.add_argument('--molcnv', type=str2bool, help='Provide "yes" to use Molpro style convergence criteria instead of the default.\n ')
     grp_software.add_argument('--qcdir', type=str, help='Provide an initial Q-Chem scratch folder (e.g. supplied initial guess).\n ')
     grp_software.add_argument('--qccnv', type=str2bool, help='Provide "yes" to Use Q-Chem style convergence criteria instead of the default.\n ')
+    grp_software.add_argument('--bagelexe', type=str, help='Specify how to run Bagel, e.g. "mpirun -np 4 BAGEL".\n ')
 
     grp_software.add_argument(
         '--ase-class',
@@ -483,11 +490,12 @@ def parse_neb_args(*args):
     grp_nebparam = parser.add_argument_group('nebparam', 'Control the NEB calculation')
     grp_nebparam.add_argument('--maxg', type=float, help='Converge when the maximum RMS-gradient of all images falls below this threshold (default 0.05 ev/Ang).\n ')
     grp_nebparam.add_argument('--avgg', type=float, help='Converge when the average RMS-gradient of all images falls below this threshold (default 0.025 ev/Ang).\n ')
-    grp_nebparam.add_argument('--guessk', type=float, help='Guess Hessian eigenvalue for displacements (default 0.05).\n ')
+    grp_nebparam.add_argument('--guessk', type=float, help='Guess the initial Hessian eigenvalue for displacements (default 0.05).\n ')
     #HP 5/10/2024: guessw will be enabled once IC NEB is implemented.
     #grp_nebparam.add_argument('--guessw', type=float, help='Guess weight for chain coordinates (default 0.1).\n ')
     grp_nebparam.add_argument('--nebk', type=float, help='NEB spring constant in units of kcal/mol/Ang^2 (default 1.0).\n ')
-    grp_nebparam.add_argument('--neb_history', type=int, help='Chain history to keep in memory; note chains are very memory intensive, >1 GB each (default 1).\n ')
+    #HP 1/16/2025: neb_history is commented out because rebuilding the Hessian based on changes in IC isn't available.
+    #grp_nebparam.add_argument('--neb_history', type=int, help='Chain history to keep in memory; note chains are very memory intensive, >1 GB each (default 1).\n ')
     grp_nebparam.add_argument('--neb_maxcyc', type=int, help='Maximum number of chain optimization cycles to perform (default 100).\n ')
     grp_nebparam.add_argument('--climb', type=float, help='Activate climbing image for max-energy points when max RMS-gradient falls below this threshold (default 0.5).\n ')
     grp_nebparam.add_argument('--ncimg', type=int, help='Number of climbing images to expect (default 1).\n ')
@@ -498,7 +506,7 @@ def parse_neb_args(*args):
     grp_nebparam.add_argument('--trust', type=float, help='Starting trust radius (default 0.1). \n ')
     grp_nebparam.add_argument('--tmax', type=float, help='Maximum trust radius (default 0.3).\n ')
     grp_nebparam.add_argument('--tmin', type=float, help='Minimum trust radius, do not reject steps trust radius is below this threshold.\n ')
-    grp_nebparam.add_argument('--skip', type=str2bool, help='Skip Hessian updates that would introduce negative eigenvalues.\n ')
+    grp_nebparam.add_argument('--skip', type=str2bool, help='Setting it to ``yes`` will skip Hessian updates that would introduce negative eigenvalues instead of resetting it. By default, it will reset the Hessian when negative Hessian eigenvalues are detected.\n ')
     grp_nebparam.add_argument('--epsilon', type=float, help='Small eigenvalue threshold for resetting Hessian, default 1e-5.\n ')
     grp_nebparam.add_argument('--wqport', type=int, help='Work Queue port used to distribute singlepoint calculations. Workers must be started separately.\n ')
     grp_nebparam.add_argument('--bigchem', type=str2bool, help='Provide "Yes" to use BigChem for performing the NEB calculation in parallel. \n'
