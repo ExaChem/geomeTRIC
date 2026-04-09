@@ -426,7 +426,9 @@ def parse_optimizer_args(*args):
         '--ase-kwargs',
         type=str,
         help='ASE calculator keyword args, as JSON dictionary, eg. {"param_filename":"path/to/file.xml"}')
-    grp_software.add_argument('--exachemexe', type=str, help='Specify absolute path of ExaChem executable.\n ')
+    
+    grp_software.add_argument('--executable', type=str, help='Specify absolute path of ExaChem executable.\n ')
+    grp_software.add_argument('--command', type=str, help="Specify command to launch ExaChem with.\n")
 
     grp_debug = parser.add_argument_group('debug', 'Relevant for development and debugging')
     grp_debug.add_argument('--displace', type=str2bool, help='Provide "yes" to write out displacements of the internal coordinates.\n ')

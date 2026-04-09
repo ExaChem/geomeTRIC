@@ -396,59 +396,59 @@ class ExaChem(Engine):
     """
     Run an ExaChem energy and gradient calculation
     """
-    def __init__(self, molecule, dirname=None, pdb=None, np=None):
+    def __init__(self, molecule, dirname, input_file, command, executable):
+        if command is None or executable is None:
+            raise RuntimeError("ExaChem requires both the --executable and --command options")
         super(ExaChem, self).__init__(molecule)
-        self.np = 2 if np is None else np
-        self.exe = os.environ.get("ExaChem")
-
-    def load_exachem_input(self, exachem_input):
-        with open(exachem_input) as exachem_in:
-            self.exachem_temp = json.load(exachem_in)
-
-        # Make sure to compute the gradient
-        self.exachem_temp["TASK"]["operation"] = ["gradient"]
-
-        # Check if geometry was given in angstrom
-        self.scale = self.exachem_temp["geometry"].get("units", "bohr") == "angstrom"
-
-    def set_exachemexe(self, exachemexe):
-        self.exe = exachemexe
+        if not os.path.exists(dirname): os.makedirs(dirname)
+        self.input_file = os.path.join(dirname, os.path.basename(input_file))
+        self.command = command
+        self.executable = executable
+        self.M = molecule
+        with open(self.input_file, "r") as file:
+            self.exachem_temp = json.load(file)
+        shutil.copy2(input_file, self.input_file) # copying the input file for modification
 
     def calc_new(self, coords, dirname):
 
-        # ensuring dirname exists
         if not os.path.exists(dirname): os.makedirs(dirname)
 
-        # Get new coordinates 
-        self.M.xyzs[0] = coords.reshape(-1, 3) * bohr2ang if self.scale else coords.reshape(-1, 3)
+        with open(self.input_file, "r") as file:
+            data = json.load(file)
 
-        # Update coordinates in JSON dictionary
-        exachem_temp = deepcopy(self.exachem_temp)
-        exachem_temp["geometry"]["coordinates"] = [f"{e}  {c[0]:12.8f}  {c[1]:12.8f}  {c[2]:12.8f}" for e,c in zip(self.M.elem, self.M.xyzs[0])]
+        # Updating coordinates
+        coordinates = data.get("geometry", None).get("coordinates", None)
+        if coordinates is None:
+            raise RuntimeError(f"Coordinates are missing in {self.input_file}")
 
-        # generating exachem input file
-        inputfile = os.path.join(dirname, "input.json")
-        with open(inputfile, "w") as exachem_in:
-            json.dump(exachem_temp, exachem_in, indent=2)
-        
-        # running exachem
-        subprocess.check_call(f"mpirun -n {self.np} {self.exe} input.json > run.out", cwd=dirname, shell=True)
+        for i, row in enumerate(coords.reshape(coords.size // 3, 3)):
+            data["geometry"]["coordinates"][i] = f"{self.M.elem[i]} {row[0]:12.8f} {row[1]:12.8f} {row[2]:12.8f}"
+
+        # Ensuring a gradient calculation is ran
+        data["TASK"]["operation"] = ["gradient"]
+
+        # GeomeTRIC stores coordinates in bohr, so we adjust the write to compensate
+        data["geometry"]["units"] = "bohr"
+
+        self.exachem_temp = data
+
+        with open(self.input_file, "w") as file:
+            json.dump(data, file, indent=4)
+
+        subprocess.check_call(f'{self.command} {self.executable} {os.path.basename(self.input_file)} > run.out', cwd=dirname, shell=True)
 
         # Extracting energy and gradients
         result = self.read_result(dirname)
-
         return result # returns dictionary with energy and gradients
 
     def calc_bondorder(self, coords, dirname):
-        # temp function
-        return 0
+        raise RuntimeError("ExaChem does not support calc_bondorder")
 
     def calc_wq_new(self, coords, dirname):
-        # temp function
-        return 0
+        raise RuntimeError("ExaChem does not support WorkQueue")
     
     def number_output(self, dirname, calcNum):
-        # temp function
+        # used by NEB but seemingly unnecessary
         return 0
     
     def read_result(self, dirname, check_coord=None):

@@ -370,12 +370,10 @@ def get_molecule_engine(**kwargs):
             )
         elif engine_str == 'exachem':
             logger.info("ExaChem engine selected. \n")
-            # Need to modify Molecule to take exachem inputs
             M = Molecule(inputf, radii=radii, fragment=frag)
-            engine = ExaChem(M, dirname=dirname, np=threads)
-            engine.load_exachem_input(inputf)
-            if exachemexe is not None:
-                engine.set_exachemexe(exachemexe)
+            engine = ExaChem(M, dirname=dirname, input_file=kwargs.get('input'),
+                             command=kwargs.get("command"),
+                             executable=kwargs.get("executable"))
             threads_enabled = True
         else:
             raise RuntimeError("Failed to create an engine object, this might be a bug in get_molecule_engine")
