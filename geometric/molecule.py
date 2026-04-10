@@ -3340,8 +3340,9 @@ class Molecule(object):
             if element.capitalize() in PeriodicTable and isfloat(sline[1]) and isfloat(sline[2]) and isfloat(sline[3]):
                 elem.append(element)
                 xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
-        if units == 'bohr': xyz *= bohr2ang
-        Answer = {'xyzs'   : [np.array(xyz)],
+        xyz_arr = np.array(xyz)
+        if units == 'bohr': xyz_arr *= bohr2ang
+        Answer = {'xyzs'   : [xyz_arr],
                   'elem'   : elem,
                   'comms'  : [val.strip() for key,val in comments.items()],
                   'charge' : charge,
