@@ -1386,6 +1386,8 @@ def run_optimizer(**kwargs):
     logger.info("Time elapsed since start of run_optimizer: %.3f seconds\n" % (time.time()-t0))
     if kwargs.get('wqport', 0):
         destroyWorkQueue()
+    if kwargs.get('engine').lower() == "exachem":
+        engine.finish()
     return progress
 
 def main(): # pragma: no cover

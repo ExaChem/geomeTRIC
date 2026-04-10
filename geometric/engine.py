@@ -407,6 +407,8 @@ class ExaChem(Engine):
         self.M = molecule
         with open(input_file, "r") as file:
             self.exachem_temp = json.load(file)
+        self.original_op = self.exachem_temp.get("TASK").get("operation")
+        self.original_units = self.exachem_temp.get("geometry").get("units")
         shutil.copy2(input_file, self.input_file) # copying the input file for modification
 
     def calc_new(self, coords, dirname):
@@ -504,6 +506,57 @@ class ExaChem(Engine):
             return {'energy':energy, 'gradient':gradient}
         except:
             raise EngineError
+
+    def finish(self):
+        with open(self.input_file, "r") as file:
+            data = json.load(file)
+        if self.original_op is not None:
+            data["TASK"]["operation"] = self.original_op
+        else:
+            del data["TASK"]["operation"]
+
+
+        if self.original_units is not None:
+
+
+            if self.original_units == "angstrom":
+                if data["geometry"].get("units", "angstrom") == "bohr":
+                    # convert from bohr to ang
+                    coords = data["geometry"]["coordinates"]
+                    xyz = []
+                    elem = []
+                    for line in coords:
+                        sline = line.split()
+                        elem.append(sline[0])
+                        xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
+                    xyz_arr = np.array(xyz) * bohr2ang
+
+                    for i, row in enumerate(xyz_arr.reshape(xyz_arr.size // 3, 3)):
+                        data["geometry"]["coordinates"][i] = f"{elem[i]} {row[0]:12.8f} {row[1]:12.8f} {row[2]:12.8f}"
+
+            if self.original_units == "bohr":
+                if data["geometry"].get("units", "angstrom") == "angstrom":
+                    # convert from ang to bohr
+                    coords = data["geometry"]["coordinates"]
+                    xyz = []
+                    elem = []
+                    for line in coords:
+                        sline = line.split()
+                        elem.append(sline[0])
+                        xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
+                    xyz_arr = np.array(xyz) * (1 / bohr2ang)
+
+                    for i, row in enumerate(xyz_arr.reshape(xyz_arr.size // 3, 3)):
+                        data["geometry"]["coordinates"][i] = f"{elem[i]} {row[0]:12.8f} {row[1]:12.8f} {row[2]:12.8f}"
+
+
+            data["geometry"]["units"] = self.original_units
+        else:
+            del data["geometry"]["units"]
+
+        with open(self.input_file, "w") as file:
+            json.dump(data, file, indent=4)
+
 
 class TeraChem(Engine):
     """
