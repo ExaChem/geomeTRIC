@@ -460,22 +460,6 @@ class ExaChem(Engine):
                 string = task.upper()
         if string == "CCSD_T": string = "CCSD(T)"
 
-        # checking existing coordinates
-        if check_coord is not None:
-            with open(self.input_file, "r") as file:
-                data = json.load(file)
-            coordinates = data["geometry"]["coordinates"]
-            xyz = []
-            elem = []
-            for line in coordinates:
-                sline = line.split()
-                elem.append(sline[0])
-                xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
-
-            if np.linalg.norm(np.array(xyz) - (check_coord).reshape(check_coord.size // 3, 3)) > 1e-5:
-                logger.info(xyz)
-                logger.info(check_coord)
-                raise EngineError
 
 
         try:
@@ -499,6 +483,7 @@ class ExaChem(Engine):
                 # Reading gradients
                 read_gradients = False
                 gradient = np.zeros((0, 3))
+                coordinates = np.zeros((0, 3))
                 for i, line in enumerate(file):
                     line = line.strip()
                     line = line.split()
@@ -509,6 +494,15 @@ class ExaChem(Engine):
                     except:
                         continue
                     if read_gradients and len(line) == 8:
+                        coordinates = np.concatenate(
+                            (coordinates, 
+                             np.array([
+                                 float(line[2]),
+                                 float(line[3]),
+                                 float(line[4])
+                             ]).reshape(1, 3))
+                        )
+
                         gradient = np.concatenate(
                                                 (gradient, 
                                                 np.array(
@@ -516,7 +510,10 @@ class ExaChem(Engine):
                                                 float(line[6]),
                                                 float(line[7])]).reshape(1, 3)))
 
-            
+            coordinates = coordinates.reshape(coordinates.size)
+            if check_coord is not None:
+                if np.linalg.norm(coordinates - check_coord) > 1e-5:
+                    raise EngineError
             gradient = gradient.reshape(gradient.size)
 
             if energy is None or gradient is None:
