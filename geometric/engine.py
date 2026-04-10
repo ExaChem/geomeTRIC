@@ -405,7 +405,7 @@ class ExaChem(Engine):
         self.command = command
         self.executable = executable
         self.M = molecule
-        with open(self.input_file, "r") as file:
+        with open(input_file, "r") as file:
             self.exachem_temp = json.load(file)
         shutil.copy2(input_file, self.input_file) # copying the input file for modification
 
