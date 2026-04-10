@@ -460,6 +460,24 @@ class ExaChem(Engine):
                 string = task.upper()
         if string == "CCSD_T": string = "CCSD(T)"
 
+        # checking existing coordinates
+        if check_coord is not None:
+            with open(self.input_file, "r") as file:
+                data = json.load(file)
+            coordinates = data["geometry"]["coordinates"]
+            xyz = []
+            elem = []
+            for line in coordinates:
+                sline = line.split()
+                elem.append(sline[0])
+                xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
+
+            if np.linalg.norm(np.array(xyz) - (check_coord).reshape(check_coord.size // 3, 3)) > 1e-5:
+                logger.info(xyz)
+                logger.info(check_coord)
+                raise EngineError
+
+
         try:
             # read the exachem result file from dirname and extract energy and gradient
             energy, gradient = None, None
