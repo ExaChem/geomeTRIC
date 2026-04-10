@@ -499,6 +499,8 @@ class ExaChem(Engine):
             
             gradient = gradient.reshape(gradient.size)
 
+            if energy is None or gradient is None:
+                raise RuntimeError(f"ExaChem calculation failed, check {dirname}/run.out")
             return {'energy':energy, 'gradient':gradient}
         except:
             raise EngineError

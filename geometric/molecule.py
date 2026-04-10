@@ -3338,7 +3338,7 @@ class Molecule(object):
             sline = line.split()
             element = "".join(filter(lambda x: x.isalpha(), sline[0]))
             if element.capitalize() in PeriodicTable and isfloat(sline[1]) and isfloat(sline[2]) and isfloat(sline[3]):
-                elem.append(element)
+                elem.append(element.capitalize())
                 xyz.append(np.array([float(sline[1]), float(sline[2]), float(sline[3])]))
         xyz_arr = np.array(xyz)
         if units == 'bohr': xyz_arr *= bohr2ang
